@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Блок Бласт | Головоломка</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            background: linear-gradient(145deg, #1a2a3a 0%, #0f1a24 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            margin: 0;
+            padding: 16px;
+        }
+        .game-container {
+            background: rgba(0,0,0,0.35);
+            border-radius: 64px 64px 48px 48px;
+            backdrop-filter: blur(2px);
+            padding: 20px 16px 24px;
+            box-shadow: 0 20px 35px rgba(0,0,0,0.4);
+            max-width: 550px;
+            width: 100%;
+        }
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            background: #1e2f3c;
+            padding: 12px 20px;
+            border-radius: 60px;
+            margin-bottom: 24px;
+        }
+        .score-box {
+            background: #00000055;
+            backdrop-filter: blur(4px);
+            padding: 6px 18px;
+            border-radius: 40px;
+            color: #FFE6B0;
+            font-weight: bold;
+            font-size: 1.6rem;
+        }
+        .score-label {
+            font-size: 0.8rem;
+            margin-right: 8px;
+        }
+        .new-game-btn {
+            background: #FFB347;
+            border: none;
+            font-size: 1.2rem;
+            font-weight: bold;
+            padding: 8px 22px;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 0 #a05e15;
+            transition: 0.07s linear;
+            font-family: inherit;
+        }
+        .new-game-btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 1px 0 #a05e15;
+        }
+        .board {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            background: #14222b;
+            border-radius: 28px;
+            padding: 10px;
+            gap: 6px;
+            margin-bottom: 28px;
+            box-shadow: inset 0 0 0 2px #2d4455, 0 12px 24px rgba(0,0,0,0.4);
+        }
+        .cell {
+            aspect-ratio: 1 / 1;
+            background-color: #2c4050;
+            border-radius: 14px;
+            box-shadow: inset 0 -2px 0 #0f191f, 0 2px 5px rgba(0,0,0,0.2);
+            transition: 0.05s linear;
+        }
+        .cell.filled {
+            background: radial-gradient(circle at 30% 30%, #f5a65b, #e07a2c);
+            box-shadow: inset 0 1px 3px rgba(255,255,180,0.6), 0 2px 4px black;
+        }
+        .blocks-panel {
+            display: flex;
+            justify-content: space-around;
+            gap: 15px;
+            margin-top: 8px;
+        }
+        .block-slot {
+            background: #14232e;
+            border-radius: 28px;
+            padding: 12px 8px;
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 6px 0 #0a1219;
+            cursor: pointer;
+            border: 2px solid #3d5a6c;
+        }
+        .block-slot.active {
+            background: #2e4b5e;
+            border: 3px solid #FFD966;
+            transform: scale(0.98);
+        }
+        .mini-grid {
+            display: inline-grid;
+            gap: 4px;
+            background: #0d1c24;
+            padding: 6px;
+            border-radius: 20px;
+            width: 100%;
+        }
+        .mini-cell {
+            aspect-ratio: 1 / 1;
+            background: #375a6b;
+            border-radius: 8px;
+        }
+        .mini-cell.filled-mini {
+            background: #f7b05e;
+            box-shadow: inset 0 1px 2px rgba(255,245,180,0.8);
+        }
+        .gameover-message {
+            text-align: center;
+            margin-top: 18px;
+            background: #ff8c5ad9;
+            backdrop-filter: blur(8px);
+            padding: 10px;
+            border-radius: 60px;
+            font-weight: bold;
+            color: #2e1a0c;
+        }
+        .hint {
+            color: #bcd0dd;
+            text-align: center;
+            font-size: 0.7rem;
+            margin-top: 16px;
+        }
+        @media (max-width: 480px) {
+            .board { gap: 4px; padding: 6px; }
+            .cell { border-radius: 10px; }
+            .mini-cell { min-width: 20px; }
+        }
+    </style>
+</head>
+<body>
+<div class="game-container">
+    <div class="top-bar">
+        <div class="score-box">
+            <span class="score-label">ОЧКИ</span>
+            <span id="scoreValue">0</span>
+        </div>
+        <button class="new-game-btn" id="resetGameBtn">🔄 Новая</button>
+    </div>
+    <div class="board" id="gameBoard"></div>
+    <div class="blocks-panel" id="blocksPanel"></div>
+    <div class="hint">✨ Нажми на блок → затем на клетку поля ✨</div>
+    <div id="gameStatusMsg" style="min-height: 48px;"></div>
+</div>
+
+<script>
+    const BOARD_SIZE = 6;
+    let matrix = Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill(0));
+    let currentScore = 0;
+    let gameActive = true;
+    let activeSlotIndex = null;
+    let blockSlots = [null, null, null];
+
+    const BLOCK_TYPES = [
+        { shape: [[0,0]], w:1, h:1, name:"точка" },
+        { shape: [[0,0],[0,1]], w:2, h:1, name:"горизонт" },
+        { shape: [[0,0],[1,0]], w:1, h:2, name:"вертикаль" },
+        { shape: [[0,0],[0,1],[1,0],[1,1]], w:2, h:2, name:"квадрат" }
+    ];
+
+    function getRandomBlock() {
+        const idx = Math.floor(Math.random() * BLOCK_TYPES.length);
+        const t = BLOCK_TYPES[idx];
+        return { shape: t.shape.map(c => [...c]), w: t.w, h: t.h, name: t.name };
+    }
+
+    function canPlace(block, row, col) {
+        for (let [dr, dc] of block.shape) {
+            const r = row + dr, c = col + dc;
+            if (r<0 || r>=BOARD_SIZE || c<0 || c>=BOARD_SIZE) return false;
+            if (matrix[r][c] !== 0) return false;
+        }
+        return true;
+    }
+
+    function placeBlockOnMatrix(block, row, col) {
+        for (let [dr, dc] of block.shape) matrix[row+dr][col+dc] = 1;
+    }
+
+    function clearFullRowsAndColumns() {
+        let rows = [], cols = [];
+        for (let i=0; i<BOARD_SIZE; i++) {
+            if (matrix[i].every(cell => cell===1)) rows.push(i);
+            let colFull = true;
+            for (let j=0; j<BOARD_SIZE; j++) if (matrix[j][i]===0) { colFull=false; break; }
+            if (colFull) cols.push(i);
+        }
+        for (let r of rows) for (let j=0; j<BOARD_SIZE; j++) matrix[r][j]=0;
+        for (let c of cols) for (let i=0; i<BOARD_SIZE; i++) matrix[i][c]=0;
+        let earned = (rows.length + cols.length) * 10;
+        if (earned) { currentScore += earned; updateScoreUI(); }
+        return earned;
+    }
+
+    function hasAnyPlacement(block) {
+        for (let i=0; i<BOARD_SIZE; i++)
+            for (let j=0; j<BOARD_SIZE; j++)
+                if (canPlace(block, i, j)) return true;
+        return false;
+    }
+
+    function isGameOver() {
+        for (let b of blockSlots) if (b && hasAnyPlacement(b)) return false;
+        return true;
+    }
+
+    function updateScoreUI() { document.getElementById("scoreValue").innerText = currentScore; }
+
+    function showMessage(text, duration) {
+        const div = document.getElementById("gameStatusMsg");
+        div.innerHTML = `<div style="background:#2e4d66; border-radius:40px; padding:8px; text-align:center;">${text}</div>`;
+        setTimeout(() => { if (gameActive) div.innerHTML = ""; }, duration);
+    }
+
+    function endGame() {
+        if (!gameActive) return;
+        gameActive = false;
+        document.getElementById("gameStatusMsg").innerHTML = '<div class="gameover-message">💀 ИГРА ОКОНЧЕНА 💀<br>Нажмите «Новая игра»</div>';
+        activeSlotIndex = null;
+        renderBlocksPanel();
+    }
+
+    function tryPlaceBlock(block, slotIdx, row, col) {
+        if (!gameActive) { showMessage("Игра завершена", 800); return false; }
+        if (!block || !canPlace(block, row, col)) { showMessage("❌ Сюда нельзя!", 700); return false; }
+        placeBlockOnMatrix(block, row, col);
+        clearFullRowsAndColumns();
+        blockSlots[slotIdx] = getRandomBlock();
+        activeSlotIndex = null;
+        renderBoard();
+        renderBlocksPanel();
+        if (isGameOver()) endGame();
+        return true;
+    }
+
+    function renderBoard() {
+        const board = document.getElementById("gameBoard");
+        board.innerHTML = "";
+        for (let i=0; i<BOARD_SIZE; i++) {
+            for (let j=0; j<BOARD_SIZE; j++) {
+                const cell = document.createElement("div");
+                cell.className = "cell" + (matrix[i][j] ? " filled" : "");
+                cell.dataset.row = i; cell.dataset.col = j;
+                const handler = () => {
+                    if (!gameActive) { showMessage("Игра окончена", 800); return; }
+                    if (activeSlotIndex === null) { showMessage("Сначала выбери блок", 1000); return; }
+                    const blk = blockSlots[activeSlotIndex];
+                    if (blk) tryPlaceBlock(blk, activeSlotIndex, i, j);
+                    else { activeSlotIndex = null; renderBlocksPanel(); }
+                };
+                cell.addEventListener("click", handler);
+                cell.addEventListener("touchstart", (e) => { e.preventDefault(); handler(); });
+                board.appendChild(cell);
+            }
+        }
+    }
+
+    function renderMiniBlock(block) {
+        if (!block) {
+            const div = document.createElement("div");
+            div.innerText = "?";
+            div.style.fontSize = "1.6rem";
+            div.style.padding = "8px";
+            return div;
+        }
+        const grid = document.createElement("div");
+        grid.className = "mini-grid";
+        grid.style.gridTemplateColumns = `repeat(${block.w}, 1fr)`;
+        grid.style.aspectRatio = `${block.w}/${block.h}`;
+        const filled = Array(block.h).fill().map(() => Array(block.w).fill(false));
+        for (let [dr, dc] of block.shape) if (dr>=0 && dr<block.h && dc>=0 && dc<block.w) filled[dr][dc]=true;
+        for (let r=0; r<block.h; r++) {
+            for (let c=0; c<block.w; c++) {
+                const mini = document.createElement("div");
+                mini.className = "mini-cell" + (filled[r][c] ? " filled-mini" : "");
+                grid.appendChild(mini);
+            }
+        }
+        return grid;
+    }
+
+    function renderBlocksPanel() {
+        const panel = document.getElementById("blocksPanel");
+        panel.innerHTML = "";
+        for (let i=0; i<3; i++) {
+            const slot = document.createElement("div");
+            slot.className = "block-slot" + (activeSlotIndex===i && gameActive ? " active" : "");
+            slot.appendChild(renderMiniBlock(blockSlots[i]));
+            const selectHandler = () => {
+                if (!gameActive) { showMessage("Игра окончена", 800); return; }
+                if (blockSlots[i]) activeSlotIndex = (activeSlotIndex === i) ? null : i;
+                renderBlocksPanel();
+                if (activeSlotIndex===i) showMessage(`Выбран: ${blockSlots[i]?.name}`, 600);
+            };
+            slot.addEventListener("click", selectHandler);
+            slot.addEventListener("touchstart", (e) => { e.preventDefault(); selectHandler(); });
+            panel.appendChild(slot);
+        }
+    }
+
+    function resetGame() {
+        matrix = Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill(0));
+        currentScore = 0;
+        gameActive = true;
+        activeSlotIndex = null;
+        updateScoreUI();
+        for (let i=0; i<3; i++) blockSlots[i] = getRandomBlock();
+        document.getElementById("gameStatusMsg").innerHTML = "";
+        renderBoard();
+        renderBlocksPanel();
+        if (isGameOver()) { for (let i=0; i<3; i++) blockSlots[i] = getRandomBlock(); renderBlocksPanel(); }
+        showMessage("Новая игра! Удачи ✨", 1200);
+    }
+
+    document.getElementById("resetGameBtn").addEventListener("click", resetGame);
+    resetGame();
+</script>
+</body>
+</html>
